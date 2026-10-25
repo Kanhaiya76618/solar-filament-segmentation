@@ -1,0 +1,81 @@
+# Default pipeline configuration. Override any key from the command line, e.g.
+#   python -m src.cli train-unet --fold 0 --set unet.epochs=10 --set unet.batch_size=8
+# Relative paths are resolved against the repository root.
+
+seed: 42
+device: auto                 # auto | cuda | mps | cpu
+
+data:
+  root: null                 # folder MAGFiLO_1.0_Kaggle_2026; null = auto-detect under /kaggle/input
+  cache_dir: /tmp/solar_cache
+  n_folds: 5
+  fold_gap_days: 1.0         # observations closer than this share a fold (same filaments visible)
+  workers: 4                 # processes for preprocessing
+
+weights_dir: weights         # committed to the repo; the notebook loads models from here
+output_dir: outputs
+
+preprocess:
+  limb_bin: 0.005            # ring width (in solar radii) for the limb-darkening profile
+  corr_max: 1.5              # corrected intensity / quiet-Sun level, mapped to 255
+
+unet:
+  encoder: resnet34
+  encoder_weights: imagenet
+  crop: 512                  # native-resolution training crops
+  batch_size: 16
+  epochs: 30
+  samples_per_epoch: 4000
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  positive_fraction: 0.7     # share of crops centred on a filament pixel
+  num_workers: 4
+  amp: true
+  infer_tile: 1024
+  infer_overlap: 256
+  infer_batch: 4
+  tta: true                  # 8 flips/rotations at inference
+
+yolo:
+  # One entry per detector. Add e.g. {name: yolo11s_seg_1024, base: yolo11s-seg.pt, imgsz: 1024,
+  # epochs: 80, batch: 8} to ensemble several resolutions.
+  models:
+    - {name: yolo11m_seg_1536, base: yolo11m-seg.pt, imgsz: 1536, epochs: 80, batch: 4}
+  conf: 0.05                 # keep low; the post-processing threshold decides
+  iou: 0.5
+  max_det: 150
+  workers: 4
+  train_args:
+    hsv_h: 0.0
+    hsv_s: 0.0
+    hsv_v: 0.2
+    degrees: 0.0
+    translate: 0.05
+    scale: 0.25
+    fliplr: 0.5
+    flipud: 0.5
+    mosaic: 0.5
+    close_mosaic: 10
+    cos_lr: true
+    patience: 0              # no early stopping; the last epoch is used
+    val: false               # skip per-epoch validation (slow at this size); PQ is measured by `validate`
+    plots: false
+
+postproc:                    # defaults; `validate` tunes them and writes weights/postproc.json
+  unet_threshold: 0.5
+  close_radius: 3
+  det_threshold: 0.30
+  claim_dilation: 4
+  min_area: 200
+  boundary_offset: 0
+  unclaimed_min_area: 0      # 0 = drop U-Net pixels no detection claims
+  unclaimed_min_prob: 0.7
+
+tune:                        # grid searched by `validate` on the held-out fold
+  unet_threshold: [0.4, 0.5, 0.6]
+  claim_dilation: [2, 4, 6]
+  det_threshold: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5]
+  min_area: [100, 200, 300, 400]
+  unclaimed_min_area: [0, 300, 600]
+  unclaimed_min_prob: [0.6, 0.75]
+  boundary_offset: [-1, 0, 1]

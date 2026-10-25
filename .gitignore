@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+outputs/
+runs/
+*.egg-info/
+.DS_Store
+.ipynb_checkpoints/
+# Pretrained base models that Ultralytics downloads into the working directory
+/yolo*.pt
+# weights/ is intentionally NOT ignored: the judges load the models from the repository.

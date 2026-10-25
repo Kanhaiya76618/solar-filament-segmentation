@@ -1,0 +1,5 @@
+# Packages missing from (or too old in) the Kaggle GPU image. torch, numpy, pandas, opencv,
+# scipy and matplotlib come preinstalled there and are left untouched.
+segmentation-models-pytorch==0.5.0
+ultralytics==8.4.188
+pycocotools==2.0.11

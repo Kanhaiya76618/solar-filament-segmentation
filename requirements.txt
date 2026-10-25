@@ -1,0 +1,15 @@
+# Versions this pipeline was tested with. After your final Kaggle run, replace these pins with
+# the exact versions of that environment (the last notebook cell prints them).
+numpy==2.5.4
+pandas==3.1.0
+scipy==1.18.1
+opencv-python-headless==5.0.0.93
+pycocotools==2.0.11
+pyyaml==6.0.3
+matplotlib
+torch==2.14.1
+torchvision==0.29.1
+timm==1.0.30
+segmentation-models-pytorch==0.5.0
+ultralytics==8.4.188
+pytest
