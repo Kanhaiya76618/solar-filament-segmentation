@@ -10,3 +10,4 @@ runs/
 # Pretrained base models that Ultralytics downloads into the working directory
 /yolo*.pt
 # weights/ is intentionally NOT ignored: the judges load the models from the repository.
+/cache/

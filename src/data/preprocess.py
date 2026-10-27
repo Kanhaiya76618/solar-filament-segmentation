@@ -43,26 +43,53 @@ def _fit_circle(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     return float(cx), float(cy), r
 
 
-def fit_disk(img: np.ndarray, n_angles: int = 720) -> Disk:
-    h, w = img.shape
-    f = img.astype(np.float32)
-    rough = (f > 0.25 * float(np.percentile(f, 99.5))).astype(np.uint8)
-    n, _, stats, centroids = cv2.connectedComponentsWithStats(rough, connectivity=8)
-    if n < 2:
-        return Disk(w / 2, h / 2, 0.43 * min(h, w))
-    k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    cx, cy = (float(v) for v in centroids[k])
-    r = float(np.sqrt(stats[k, cv2.CC_STAT_AREA] / np.pi))
+def _ring_search(img: np.ndarray, r_min: float, r_max: float, scale: int = 4) -> tuple[float, float, float]:
+    """Centre and radius of the circle (radius in [r_min, r_max]) lying on the strongest edges.
 
-    smooth = cv2.GaussianBlur(f, (0, 0), 2.0)
+    Works at 1/``scale`` resolution: correlates the gradient magnitude with thin rings of every
+    candidate radius and keeps the best (centre, radius). Restricting the radius is what keeps it
+    off the outer edge of the scattered-light halo, which is often the stronger edge.
+    """
+    h, w = img.shape
+    small = cv2.resize(cv2.GaussianBlur(img, (0, 0), 1.5), (w // scale, h // scale), interpolation=cv2.INTER_AREA)
+    gy, gx = np.gradient(small)
+    mag = np.hypot(gx, gy)
+    best = (-np.inf, w / 2, h / 2, (r_min + r_max) / 2)
+    for r in np.arange(r_min / scale, r_max / scale + 0.5, 0.5):
+        size = 2 * int(np.ceil(r)) + 3
+        ring = np.zeros((size, size), np.float32)
+        cv2.circle(ring, (size // 2, size // 2), int(round(r)), 1.0, 1, lineType=cv2.LINE_AA)
+        score = cv2.filter2D(mag, cv2.CV_32F, ring / ring.sum(), borderType=cv2.BORDER_CONSTANT)
+        y, x = np.unravel_index(int(np.argmax(score)), score.shape)
+        if score[y, x] > best[0]:
+            best = (float(score[y, x]), (x + 0.5) * scale - 0.5, (y + 0.5) * scale - 0.5, r * scale)
+    return best[1], best[2], best[3]
+
+
+def fit_disk(img: np.ndarray, r_min: float = 870.0, r_max: float = 940.0, n_angles: int = 720) -> Disk:
+    """Fits the solar limb. GONG remaps the Sun to a fixed radius (~904 px in the competition
+    JPEGs), so the search is limited to [r_min, r_max]; the bright halo around many frames would
+    otherwise be mistaken for the limb.
+
+    A ring search gives a first circle; it is refined at full resolution by taking, along 720
+    rays, the steepest intensity drop within 12 px of that circle and fitting a circle to those
+    points (with outlier rejection).
+    """
+    f = img.astype(np.float32)
+    cx, cy, r = _ring_search(f, r_min, r_max)
+
+    smooth = cv2.GaussianBlur(f, (0, 0), 1.0)
     theta = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
     cos, sin = np.cos(theta)[:, None], np.sin(theta)[:, None]
     for _ in range(2):
-        radii = np.arange(0.85 * r, 1.15 * r, 0.5, dtype=np.float32)[None, :]
+        radii = np.arange(r - 12, r + 12, 0.5, dtype=np.float32)[None, :]
         rays = cv2.remap(smooth, (cx + cos * radii).astype(np.float32), (cy + sin * radii).astype(np.float32),
                          cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
         edge = radii[0, np.argmin(np.diff(rays, axis=1), axis=1)] + 0.25  # midpoint of the steepest drop
-        cx, cy, r = _fit_circle(cx + cos[:, 0] * edge, cy + sin[:, 0] * edge)
+        fx, fy, fr = _fit_circle(cx + cos[:, 0] * edge, cy + sin[:, 0] * edge)
+        if not (r_min - 10 <= fr <= r_max + 10 and np.hypot(fx - cx, fy - cy) < 15):
+            break  # refinement wandered off: keep the ring-search circle
+        cx, cy, r = fx, fy, fr
     return Disk(cx, cy, r)
 
 

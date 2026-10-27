@@ -17,11 +17,16 @@ SIZE = 2048
 
 
 def sun_image(rng: np.random.Generator, filaments: list[np.ndarray], cx: float, cy: float, r: float,
-              n_spots: int = 2) -> np.ndarray:
+              n_spots: int = 2, halo: tuple[float, float, float] | None = None) -> np.ndarray:
+    """``halo = (dx, dy, radius)``: a bright scattered-light annulus centred at (cx+dx, cy+dy)
+    that ends in a sharp edge, as in many real GONG frames."""
     ys, xs = np.mgrid[:SIZE, :SIZE].astype(np.float32)
     d = np.hypot(xs - cx, ys - cy)
     rho = np.clip(d / r, 0, 1)
-    img = np.where(d <= r, 170 * (1 - 0.5 * (1 - np.sqrt(1 - rho ** 2))), 35 * np.exp(-(d - r) / 25))
+    outside = 35 * np.exp(-(d - r) / 25)
+    if halo is not None:
+        outside = np.where(np.hypot(xs - cx - halo[0], ys - cy - halo[1]) < halo[2], 55.0, outside)
+    img = np.where(d <= r, 170 * (1 - 0.5 * (1 - np.sqrt(1 - rho ** 2))), outside)
     for m in filaments:
         img[m] *= 0.65
     for _ in range(n_spots):
@@ -69,13 +74,14 @@ def make_dataset(root: Path, n_train: int = 8, n_test: int = 3, seed: int = 0) -
     for k in range(n_train + n_test):
         image_id = (start + timedelta(days=3 * k, minutes=int(rng.integers(0, 600)))).strftime("%Y%m%d%H%M%S") \
             + "MBLCTU"[k % 6] + "h"
-        cx, cy, r = 1024 + rng.uniform(-12, 12), 1024 + rng.uniform(-12, 12), rng.uniform(860, 900)
+        cx, cy, r = 1024 + rng.uniform(-60, 60), 1024 + rng.uniform(-60, 60), rng.uniform(895, 912)
         fils = [random_filament(rng, cx, cy, r) for _ in range(int(rng.integers(3, 8)))]
         fils = [f for i, f in enumerate(fils) if not any((f & g).any() for g in fils[:i])]  # keep disjoint
         is_test = k >= n_train
         split = "test" if is_test else "train"
-        cv2.imwrite(str(base / split / f"{split}_images" / f"{image_id}.jpeg"), sun_image(rng, fils, cx, cy, r),
-                    [cv2.IMWRITE_JPEG_QUALITY, 95])
+        halo = (rng.uniform(-40, 40), rng.uniform(-40, 40), rng.uniform(980, 1060)) if k % 2 else None
+        cv2.imwrite(str(base / split / f"{split}_images" / f"{image_id}.jpeg"),
+                    sun_image(rng, fils, cx, cy, r, halo=halo), [cv2.IMWRITE_JPEG_QUALITY, 95])
 
         annotators = ["010101"] + (["010102"] if (not is_test and k % 3 == 0) else [])
         for annotator in annotators:

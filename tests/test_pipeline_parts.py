@@ -26,10 +26,20 @@ def band(y0, x0, h, w, shape=(2048, 2048)):
     return m
 
 
+@pytest.mark.parametrize("cx, cy, halo", [(1023.0, 1024.0, (0, 0, 1035)), (980.0, 1060.0, (-30, 25, 1000)),
+                                           (1050.0, 990.0, None)])
+def test_disk_fit_ignores_bright_halo(cx, cy, halo):
+    """Regression: on frames with a bright scattered-light annulus, the old fit locked onto its
+    outer edge (r ~ 960-1035 instead of ~904) for about 18% of the training images."""
+    img = sun_image(np.random.default_rng(0), [], cx, cy, 904.0, halo=halo)
+    disk = fit_disk(img)
+    assert abs(disk.cx - cx) < 1.5 and abs(disk.cy - cy) < 1.5 and abs(disk.r - 904.0) < 2.0
+
+
 @pytest.fixture(scope="module")
 def synthetic_sun():
     rng = np.random.default_rng(3)
-    cx, cy, r = 1031.5, 1017.0, 884.0
+    cx, cy, r = 1031.5, 1017.0, 896.0
     fils = [random_filament(rng, cx, cy, r) for _ in range(5)]
     return sun_image(rng, fils, cx, cy, r), (cx, cy, r), fils
 
@@ -136,7 +146,7 @@ def test_cache_and_yolo_export(tmp_path):
     target = np.load(cache / "target" / f"{multi}.npy")
     assert {0, 255}.issubset(set(np.unique(target))) and (target == 128).any()  # annotators disagree
     disk = load_disks(cache)[multi]
-    assert 850 < disk.r < 910 and disk_mask(disk).sum() > 0
+    assert 880 < disk.r < 930 and disk_mask(disk).sum() > 0
 
     data_yaml = export_yolo(cache, fold=0)
     labels = list((cache / "yolo" / "labels").glob("*.txt"))
