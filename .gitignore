@@ -11,3 +11,5 @@ runs/
 /yolo*.pt
 # weights/ is intentionally NOT ignored: the judges load the models from the repository.
 /cache/
+# Base model Ultralytics downloads for its AMP check
+weights/yolo26*.pt
