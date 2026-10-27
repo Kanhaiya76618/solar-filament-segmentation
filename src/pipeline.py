@@ -93,8 +93,10 @@ def tune(raws: dict, gt: pd.DataFrame, cfg: dict) -> tuple[dict, pd.DataFrame]:
     grid, base = cfg["tune"], dict(cfg["postproc"])
     positive_areas = [a for a in grid["unclaimed_min_area"] if a > 0]
     table = []
-    for t_unet, dil in itertools.product(grid["unet_threshold"], grid["claim_dilation"]):
-        loose = dict(base, unet_threshold=t_unet, claim_dilation=dil, det_threshold=min(grid["det_threshold"]),
+    for t_unet, dil, close in itertools.product(grid["unet_threshold"], grid["claim_dilation"],
+                                                grid.get("close_radius", [base["close_radius"]])):
+        loose = dict(base, unet_threshold=t_unet, claim_dilation=dil, close_radius=close,
+                     det_threshold=min(grid["det_threshold"]),
                      min_area=min(grid["min_area"]), unclaimed_min_area=min(positive_areas, default=0),
                      unclaimed_min_prob=min(grid["unclaimed_min_prob"]))
         cands = {i: [(inst, encode_mask(inst.full(SHAPE), verify=False))
@@ -110,10 +112,10 @@ def tune(raws: dict, gt: pd.DataFrame, cfg: dict) -> tuple[dict, pd.DataFrame]:
                 ordered = sorted((it for it in items if id(it[0]) in kept), key=lambda it: -it[0].score)
                 rows += [(f"{image_id}_{n}", rle) for n, (_, rle) in enumerate(ordered, 1)]
             res = evaluate(gt, pd.DataFrame(rows, columns=["filament_id", "segmentation_rle"]))
-            table.append({**{k: p[k] for k in ["unet_threshold", "claim_dilation", "det_threshold", "min_area",
-                                                "unclaimed_min_area", "unclaimed_min_prob"]},
+            table.append({**{k: p[k] for k in ["unet_threshold", "close_radius", "claim_dilation", "det_threshold",
+                                                "min_area", "unclaimed_min_area", "unclaimed_min_prob"]},
                           "boundary_offset": 0, "pq": res.pq, "tp": res.tp, "fp": res.fp, "fn": res.fn})
-        print(f"[tune] unet_threshold={t_unet} claim_dilation={dil}: best so far "
+        print(f"[tune] unet_threshold={t_unet} claim_dilation={dil} close_radius={close}: best so far "
               f"{max(r['pq'] for r in table):.4f}", flush=True)
 
     best = dict(base, **{k: v for k, v in max(table, key=lambda r: r["pq"]).items()

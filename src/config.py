@@ -7,8 +7,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "default.yaml"
 
 
+def _merge(base: dict, update: dict) -> dict:
+    out = dict(base)
+    for key, value in update.items():
+        out[key] = _merge(out[key], value) if isinstance(value, dict) and isinstance(out.get(key), dict) else value
+    return out
+
+
 def load_config(path: str | Path | None = None, overrides: list[str] | tuple = ()) -> dict:
-    cfg = yaml.safe_load(Path(path or DEFAULT_CONFIG).read_text())
+    """Loads a YAML config. A file with ``inherit: other.yaml`` only lists what differs from it."""
+    path = Path(path or DEFAULT_CONFIG)
+    cfg = yaml.safe_load(path.read_text())
+    if "inherit" in cfg:
+        cfg = _merge(load_config(path.parent / cfg.pop("inherit")), cfg)
     for item in overrides:
         key, sep, value = item.partition("=")
         if not sep:
